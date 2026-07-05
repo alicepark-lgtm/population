@@ -1,33 +1,59 @@
 import streamlit as st
 import pandas as pd
 import folium
+import os
 from streamlit_folium import st_folium
 
-st.set_page_config(page_title="안산시 인구 마커 지도", layout="wide")
+st.set_page_config(page_title="안산시 인구 공간 분포 지도", layout="wide")
 
 st.title("🗺️ 안산시 행정동별 인구 공간 분포 지도")
 st.markdown("안산시 행정동의 지리적 위치 좌표와 2025년 기준 주민등록인구 데이터를 결합하여 시각화합니다.")
 
+# 💡 방어적 파일 로드 함수 (여러 경로를 순차적으로 탐색)
+def find_and_read_csv(filename):
+    # 탐색할 후보 경로들 목록 (최상위 경로, data 하위 경로 등)
+    possible_paths = [
+        filename,                           # 예: 'location.csv'
+        os.path.join("data", filename),     # 예: 'data/location.csv'
+        os.path.join("..", filename)        # 상위 폴더 경로 탐색
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            # 파일이 존재하면 해당 경로로 읽어옵니다.
+            # 인구 데이터와 위치 데이터 모두에 맞춰 인코딩을 고려합니다.
+            try:
+                return pd.read_csv(path, encoding='utf-8-sig')
+            except:
+                return pd.read_csv(path, encoding='utf-8')
+    return None
+
 @st.cache_data
 def load_and_merge_data():
-    try:
-        # 데이터 유기적 결합 (정해진 경로에서 로드)
-        pop_df = pd.read_csv("population.csv")
-        loc_df = pd.read_csv("location.csv")
+    pop_df = find_and_read_csv("population.csv")
+    loc_df = find_and_read_csv("location.csv")
+    
+    if pop_df is None or loc_df is None:
+        # 두 파일 중 하나라도 찾지 못했을 때 안내 메시지 출력
+        st.error("""
+        ### ❌ 데이터 파일을 찾을 수 없습니다!
+        GitHub 저장소(Repository)에 **`population.csv`**와 **`location.csv`** 파일이 모두 업로드되어 있는지 확인해 주세요.
         
-        # 최신 연도인 2025년 데이터만 추출
-        pop_2025 = pop_df[pop_df["연도"] == 2025]
-        
-        # '동' 컬럼을 기준으로 인구 데이터와 위경도 데이터를 이너 조인(Inner Join)
-        merged_df = pd.merge(loc_df, pop_2025, on="동", how="inner")
-        return merged_df
-    except FileNotFoundError as e:
-        st.error(f"❌ 필수 데이터 파일이 누락되었습니다. 파일 위치를 확인해 주세요. 상세 내용: {e}")
+        **💡 권장 파일 위치:** `main.py` 파일과 같은 최상위(Root) 폴더 안
+        """)
         return None
+        
+    # 최신 연도인 2025년 데이터만 필터링
+    pop_2025 = pop_df[pop_df["연도"] == 2025]
+    
+    # '동' 컬럼을 기준으로 병합
+    merged_df = pd.merge(loc_df, pop_2025, on="동", how="inner")
+    return merged_df
 
+# 데이터 로드 및 병합 실행
 df = load_and_merge_data()
 
-if df is not None:
+if df is not None and not df.empty:
     # 안산시 중심부 좌표로 기본 지도 생성
     m = folium.Map(
         location=[37.32, 126.83],
