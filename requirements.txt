@@ -10,3 +10,4 @@ numpy>=1.24.0
 # 상시 데이터 레이블(text_auto) 및 다색(Multi-color) 차트 시각화를 위한 라이브러리
 plotly>=5.15.0
 folium
+streamlit-folium
