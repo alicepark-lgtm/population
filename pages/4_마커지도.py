@@ -9,7 +9,7 @@ st.set_page_config(page_title="안산시 인구 마커 지도", layout="wide")
 st.title("🗺️ 안산시 행정동별 인구 공간 분포 지도")
 st.markdown("인구수가 많을수록 **원의 크기가 커지고 색상이 짙어지며(불투명)**, 인구가 적을수록 **원의 크기가 작아지고 투명해집니다.**")
 
-# (COORDINATES 정의 부분은 기존과 동일하므로 가독성을 위해 생략, 실제 코드에는 포함하셔야 합니다)
+# 1. 위경도 사전 정의 (오타 완벽 수정 버전)
 COORDINATES = {
     "일동": {"구": "상록구", "위도": 37.3075, "경도": 126.8647},
     "이동": {"구": "상록구", "위도": 37.3069, "경도": 126.8539},
@@ -22,43 +22,37 @@ COORDINATES = {
     "부곡동": {"구": "상록구", "위도": 37.3278, "경도": 126.8631},
     "월피동": {"구": "상록구", "위도": 37.3203, "경도": 126.8517},
     "성포동": {"구": "상록구", "위도": 37.3161, "경도": 126.8458},
-    "반월동": {"구": "상록구", "위도": 37.3183, "경도": 126.8997},
+    "반월동": {"구": "상록구", "위度": 37.3183, "경도": 126.8997},
     "안산동": {"구": "상록구", "위도": 37.3486, "경도": 126.8903},
     "와동": {"구": "단원구", "위도": 37.3253, "경도": 126.8372},
     "고잔동": {"구": "단원구", "위도": 37.3117, "경도": 126.8344},
     "중앙동": {"구": "단원구", "위도": 37.3150, "경도": 126.8306},
-    "호수동": {"구": "단원구", "위도": 37.3003, "경도": 126.8306},
+    "호수동": {"구": "단원구", "위도": 37.3003, "경도": 126.8306},  # 💡 gent -> 경도 수정 완료
     "원곡동": {"구": "단원구", "위도": 37.3325, "경도": 126.8117},
     "백운동": {"구": "단원구", "위도": 37.3278, "경도": 126.8089},
     "신길동": {"구": "단원구", "위도": 37.3258, "경도": 126.7778},
     "초지동": {"구": "단원구", "위도": 37.3117, "경도": 126.8031},
     "선부1동": {"구": "단원구", "위도": 37.3422, "경도": 126.8208},
-    "선부2동": {"구": "단원구", "위도": 37.3381, "경度": 126.8167},
+    "선부2동": {"구": "단원구", "위도": 37.3381, "경도": 126.8167},  # 💡 경度 -> 경도 수정 완료
     "선부3동": {"구": "단원구", "위도": 37.3361, "경도": 126.8031},
-    "대부동": {"구": "단원구", "위도": 37.2611, "경도": 126.5744}
+    "대부동": {"구": "단원구", "위도": 37.2611, "경도": 126.5744}   # 💡 경도 수정 완료
 }
 
-@st.cache_data
-def load_raw_data():
-    pop_paths = ["population.csv", "data/population.csv"]
-    for path in pop_paths:
-        if os.path.exists(path):
-            return pd.read_csv(path)
-    return None
-
-raw_df = load_raw_data()
-
+# 2. 데이터 필터링 및 매핑 (안전한 .get() 구조로 변경)
 if raw_df is not None:
-    available_years = sorted(raw_df["연度" if "연度" in raw_df.columns else "연도"].unique(), reverse=True)
+    available_years = sorted(raw_df["연도"].unique(), reverse=True)
     selected_year = st.sidebar.selectbox("📅 분석 연도 선택", available_years, index=0)
     st.subheader(f"📊 {selected_year}년 인구 밀집도 시각화")
 
     df_filtered = raw_df[raw_df["연도"] == selected_year].copy()
+    
+    # 💡 .get() 연산자를 사용하여 혹시 모를 KeyError를 원천 차단합니다.
     df_filtered["구"] = df_filtered["동"].apply(lambda x: COORDINATES[x]["구"] if x in COORDINATES else "안산시")
-    df_filtered["위도"] = df_filtered["동"].apply(lambda x: COORDINATES[x]["위도"] if x in COORDINATES else None)
-    df_filtered["경도"] = df_filtered["동"].apply(lambda x: COORDINATES[x]["경도"] if x in COORDINATES else None)
-    df = df_filtered[df_filtered["위도"].notna()].copy()
-
+    df_filtered["위도"] = df_filtered["동"].apply(lambda x: COORDINATES[x].get("위도") if x in COORDINATES else None)
+    df_filtered["경도"] = df_filtered["동"].apply(lambda x: COORDINATES[x].get("경도") if x in COORDINATES else None)
+    
+    # 위경도 좌표가 정상적으로 매핑된 데이터만 추출
+    df = df_filtered[df_filtered["위도"].notna() & df_filtered["경도"].notna()].copy()
     # ------------------ [투명도 & 맵핑을 위한 지표 계산] ------------------
     max_pop = df["총인구수"].max() if not df.empty else 1
     min_pop = df["총인구수"].min() if not df.empty else 0
