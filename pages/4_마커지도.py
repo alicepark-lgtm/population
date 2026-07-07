@@ -22,23 +22,35 @@ COORDINATES = {
     "부곡동": {"구": "상록구", "위도": 37.3278, "경도": 126.8631},
     "월피동": {"구": "상록구", "위도": 37.3203, "경도": 126.8517},
     "성포동": {"구": "상록구", "위도": 37.3161, "경도": 126.8458},
-    "반월동": {"구": "상록구", "위度": 37.3183, "경도": 126.8997},
+    "반월동": {"구": "상록구", "위도": 37.3183, "경도": 126.8997},
     "안산동": {"구": "상록구", "위도": 37.3486, "경도": 126.8903},
     "와동": {"구": "단원구", "위도": 37.3253, "경도": 126.8372},
     "고잔동": {"구": "단원구", "위도": 37.3117, "경도": 126.8344},
     "중앙동": {"구": "단원구", "위도": 37.3150, "경도": 126.8306},
-    "호수동": {"구": "단원구", "위도": 37.3003, "경도": 126.8306},  # 💡 gent -> 경도 수정 완료
+    "호수동": {"구": "단원구", "위도": 37.3003, "경도": 126.8306},
     "원곡동": {"구": "단원구", "위도": 37.3325, "경도": 126.8117},
     "백운동": {"구": "단원구", "위도": 37.3278, "경도": 126.8089},
     "신길동": {"구": "단원구", "위도": 37.3258, "경도": 126.7778},
     "초지동": {"구": "단원구", "위도": 37.3117, "경도": 126.8031},
     "선부1동": {"구": "단원구", "위도": 37.3422, "경도": 126.8208},
-    "선부2동": {"구": "단원구", "위도": 37.3381, "경도": 126.8167},  # 💡 경度 -> 경도 수정 완료
+    "선부2동": {"구": "단원구", "위도": 37.3381, "경도": 126.8167},
     "선부3동": {"구": "단원구", "위도": 37.3361, "경도": 126.8031},
-    "대부동": {"구": "단원구", "위도": 37.2611, "경도": 126.5744}   # 💡 경도 수정 완료
+    "대부동": {"구": "단원구", "위도": 37.2611, "경도": 126.5744}
 }
 
-# 2. 데이터 필터링 및 매핑 (안전한 .get() 구조로 변경)
+# 2. 데이터 파일 로드 함수 정의 (캐싱 적용)
+@st.cache_data
+def load_raw_data():
+    pop_paths = ["population.csv", "data/population.csv"]
+    for path in pop_paths:
+        if os.path.exists(path):
+            return pd.read_csv(path)
+    return None
+
+# 💡 [NameError 해결 지점] 데이터를 명시적으로 호출하여 raw_df 변수를 생성합니다.
+raw_df = load_raw_data()
+
+# 3. 데이터 필터링 및 매핑 
 if raw_df is not None:
     available_years = sorted(raw_df["연도"].unique(), reverse=True)
     selected_year = st.sidebar.selectbox("📅 분석 연도 선택", available_years, index=0)
@@ -46,33 +58,31 @@ if raw_df is not None:
 
     df_filtered = raw_df[raw_df["연도"] == selected_year].copy()
     
-    # 💡 .get() 연산자를 사용하여 혹시 모를 KeyError를 원천 차단합니다.
+    # 안전하게 .get() 구조로 매핑
     df_filtered["구"] = df_filtered["동"].apply(lambda x: COORDINATES[x]["구"] if x in COORDINATES else "안산시")
     df_filtered["위도"] = df_filtered["동"].apply(lambda x: COORDINATES[x].get("위도") if x in COORDINATES else None)
     df_filtered["경도"] = df_filtered["동"].apply(lambda x: COORDINATES[x].get("경도") if x in COORDINATES else None)
     
-    # 위경도 좌표가 정상적으로 매핑된 데이터만 추출
+    # 위경도 좌표가 정상적으로 매핑된 데이터만 최종 추출
     df = df_filtered[df_filtered["위도"].notna() & df_filtered["경도"].notna()].copy()
+    
     # ------------------ [투명도 & 맵핑을 위한 지표 계산] ------------------
     max_pop = df["총인구수"].max() if not df.empty else 1
     min_pop = df["총인구수"].min() if not df.empty else 0
     pop_range = max_pop - min_pop if max_pop != min_pop else 1
 
-    # 1. 안산시 기본 지도 생성 (어두운 테마나 밝은 테마 모두 잘 어울리는 깨끗한 배경)
+    # 기본 지도 생성
     m = folium.Map(location=[37.315, 126.83], zoom_start=12, tiles="CartoDB positron")
 
-    # 2. 데이터프레임을 순회하며 동적 투명도/색상 마커 추가
+    # 데이터프레임을 순회하며 동적 투명도/색상 마커 추가
     for _, row in df.iterrows():
-        # 인구 상대 비율 (0.0 ~ 1.0)
         ratio = (row["총인구수"] - min_pop) / pop_range
         
-        # 💡 ① 반지름 스케일링 (8px ~ 38px)
+        # 반지름 및 투명도 스케일링
         pixel_radius = 8 + ratio * 30
-        
-        # 💡 ② 투명도 스케일링 (인구가 적으면 0.25로 흐리게, 많으면 0.85로 진하게)
         dynamic_opacity = 0.25 + (ratio * 0.60)
         
-        # 💡 ③ 색상 단계화 (인구 비율에 따라 연한 주황에서 진한 빨강으로 변경)
+        # 색상 그라데이션 단계화
         if ratio < 0.25:
             color_hex = "#fecc5c"  # 연한 황색
         elif ratio < 0.5:
@@ -110,11 +120,11 @@ if raw_df is not None:
             radius=pixel_radius,
             popup=folium.Popup(popup_html, max_width=220),
             tooltip=f"<b>{row['동']}</b>: {row['총인구수']:,}명",
-            color=color_hex,                     # 테두리 색상
+            color=color_hex,
             weight=1,
             fill=True,
-            fill_color=color_hex,                # 내부 채우기 색상
-            fill_opacity=dynamic_opacity         # 👈 핵심: 인구수에 비례한 동적 투명도 적용!
+            fill_color=color_hex,
+            fill_opacity=dynamic_opacity
         ).add_to(m)
 
     # 지도를 화면에 렌더링
