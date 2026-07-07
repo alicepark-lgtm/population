@@ -19,8 +19,15 @@ if "map_zoom" not in st.session_state:
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
 
 # 저장된 마커들을 지도에 표시
+# 기존 코드 수정 부분 (지도에 저장된 마커들을 표시하는 루프)
 for name, lat, lon in st.session_state.places:
-    folium.Marker([lat, lon], popup=name, tooltip=name).add_to(m)
+    folium.Marker(
+        [lat, lon], 
+        popup=name, 
+        tooltip=name,
+        # 📌 아래 icon 옵션을 추가하면 깨지지 않고 예쁜 마커가 나옵니다!
+        icon=folium.Icon(color="red", icon="info-sign") 
+    ).add_to(m)
 
 # 3. 지도를 화면에 렌더링하고 사용자의 행동(클릭, 이동) 감지
 # 중요: key를 지정해야 상태 변화를 정확히 추적할 수 있습니다.
